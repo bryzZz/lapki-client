@@ -32,6 +32,8 @@ import {
 
 import { isDefaultComponent, convertDefaultComponent } from './ElementsValidator';
 
+import { ChoiceState } from '../drawable';
+
 function exportMeta(meta: Meta): CGMLMeta {
   return {
     id: 'coreMeta',
@@ -146,34 +148,26 @@ function serializeCondition(condition: Condition): string {
   return `[${lval} ${invertOperatorAlias[condition.type]} ${rval}]`;
 }
 
-function serializeFinals(finalStates: { [id: string]: FinalState }): { [id: string]: CGMLVertex } {
-  const finals: { [id: string]: CGMLVertex } = {};
-  for (const finalId in finalStates) {
-    const final = finalStates[finalId];
-    finals[finalId] = {
-      data: '',
-      type: 'final',
-      parent: final.parentId,
-      position: final.position,
-    };
-  }
-  return finals;
-}
+type Vertex = FinalState | ChoiceState | InitialState;
+type VertexType = 'final' | 'initial' | 'choice';
 
-function serializeInitials(initialStates: { [id: string]: InitialState }): {
-  [id: string]: CGMLVertex;
-} {
-  const initials: { [id: string]: CGMLVertex } = {};
-  for (const initialId in initialStates) {
-    const initial = initialStates[initialId];
-    initials[initialId] = {
+function serializeVertex(
+  vertexes: { [id: string]: Vertex },
+  vertexType: VertexType
+): { [id: string]: CGMLVertex } {
+  const rawVertexes: { [id: string]: CGMLVertex } = {};
+  for (const vertexId in vertexes) {
+    const vertex: Vertex = vertexes[vertexId];
+    rawVertexes[vertexId] = {
       data: '',
-      type: 'initial',
-      parent: initial.parentId,
-      position: initial.position,
+      type: vertexType,
+      position: vertex.position,
     };
+    if (vertex['parentId']) {
+      rawVertexes[vertexId].parent = vertex['parentId'];
+    }
   }
-  return initials;
+  return rawVertexes;
 }
 
 function serializeTransitions(
@@ -297,8 +291,9 @@ export function exportCGML(elements: Elements): string {
   cgmlElements.states = serializeStates(elements.states);
   cgmlElements.transitions = serializeTransitions(elements.transitions);
   cgmlElements.notes = serializeNotes(elements.notes);
-  cgmlElements.initialStates = serializeInitials(elements.initialStates);
-  cgmlElements.finals = serializeFinals(elements.finalStates);
+  cgmlElements.initialStates = serializeVertex(elements.initialStates, 'initial');
+  cgmlElements.finals = serializeVertex(elements.finalStates, 'final');
+  cgmlElements.choices = serializeVertex(elements.choiceStates, 'choice');
   cgmlElements.keys = getKeys();
   return exportGraphml(cgmlElements);
 }

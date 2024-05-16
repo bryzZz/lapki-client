@@ -8,6 +8,7 @@ import {
   CGMLAction,
   CGMLTransitionAction,
   CGMLVertex,
+  CGMLChoice,
 } from '@kruzhok-team/cyberiadaml-js';
 
 import {
@@ -22,6 +23,7 @@ import {
   Transition,
   Event,
   FinalState,
+  ChoiceState,
 } from '@renderer/types/diagram';
 import { Platform, ComponentProto, MethodProto } from '@renderer/types/platform';
 
@@ -175,6 +177,23 @@ function getInitialStates(rawInitialStates: { [id: string]: CGMLInitialState }):
     };
   }
   return initialStates;
+}
+
+function getChoices(rawChoices: { [id: string]: CGMLVertex }): {
+  [id: string]: InitialState;
+} {
+  const choices: { [id: string]: ChoiceState } = {};
+  for (const choiceId in rawChoices) {
+    const rawChoice = rawChoices[choiceId];
+    if (!rawChoice.position) {
+      throw new Error(`Не указана позиция псевдосостояния выбора с идентификатором ${choiceId}`);
+    }
+    choices[choiceId] = {
+      position: rawChoice.position,
+      parentId: rawChoice.parent,
+    };
+  }
+  return choices;
 }
 
 function getStates(rawStates: { [id: string]: CGMLState }): { [id: string]: State } {
@@ -395,6 +414,7 @@ export function importGraphml(
       notes: {},
       finalStates: {},
       initialStates: {},
+      choiceStates: {},
       components: {},
       platform: rawElements.platform,
       meta: {},
@@ -423,12 +443,16 @@ export function importGraphml(
       platform.components,
       elements.components
     );
+    console.log(rawElements.choices);
+
+    elements.choiceStates = getChoices(rawElements.choices);
     elements.transitions = labelTransitionParameters(
       elements.transitions,
       platform.components,
       elements.components
     );
     validateElements(elements, platform);
+    console.log(elements);
     return elements;
   } catch (error) {
     console.error(error);
