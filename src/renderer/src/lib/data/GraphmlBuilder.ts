@@ -37,7 +37,10 @@ import { ChoiceState } from '../drawable';
 function exportMeta(meta: Meta): CGMLMeta {
   return {
     id: 'coreMeta',
-    values: meta,
+    values: {
+      ...meta,
+      standardVersion: '1.0',
+    },
   };
 }
 
