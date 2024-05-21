@@ -81,7 +81,6 @@ function parseCondition(condition: string): Condition {
   const lval = checkConditionTokenType(tokens[0]);
   const operator = operatorAlias[tokens[1]];
   const rval = checkConditionTokenType(tokens[2]);
-  console.log(lval, rval);
   if (operator !== undefined) {
     return {
       type: operator,
@@ -468,7 +467,6 @@ export function importGraphml(
       platform.components,
       elements.components
     );
-    console.log(rawElements);
 
     elements.choiceStates = getChoices(rawElements.choices);
     elements.transitions = labelTransitionParameters(
@@ -477,7 +475,6 @@ export function importGraphml(
       elements.components
     );
     validateElements(elements, platform);
-    console.log(elements);
     return elements;
   } catch (error) {
     console.error(error);
