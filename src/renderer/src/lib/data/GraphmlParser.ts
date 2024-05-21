@@ -25,12 +25,15 @@ import {
   FinalState,
   ChoiceState,
 } from '@renderer/types/diagram';
-import { Platform, ComponentProto, MethodProto } from '@renderer/types/platform';
+import { Platform, ComponentProto, MethodProto, SignalProto } from '@renderer/types/platform';
 
 import { validateElements } from './ElementsValidator';
 import { getPlatform, isPlatformAvailable } from './PlatformLoader';
 
-type EventWithCondition = EventData & { condition?: Condition };
+type EventWithCondition = {
+  event?: EventData;
+  condition?: Condition;
+};
 
 const systemComponentAlias = {
   entry: { component: 'System', method: 'onEnter' },
@@ -78,6 +81,7 @@ function parseCondition(condition: string): Condition {
   const lval = checkConditionTokenType(tokens[0]);
   const operator = operatorAlias[tokens[1]];
   const rval = checkConditionTokenType(tokens[2]);
+  console.log(lval, rval);
   if (operator !== undefined) {
     return {
       type: operator,
@@ -200,12 +204,13 @@ function getStates(rawStates: { [id: string]: CGMLState }): { [id: string]: Stat
   const states: { [id: string]: State } = {};
   for (const rawStateId in rawStates) {
     const rawState = rawStates[rawStateId];
-    const events: EventData[] = actionsToEventData(rawState.actions).map((value): EventData => {
-      return {
-        trigger: value.trigger,
-        do: value.do,
-      };
-    });
+    const eventDataWithCondition = actionsToEventData(rawState.actions);
+    const events: EventData[] = [];
+    for (const event of eventDataWithCondition) {
+      if (event.event) {
+        events.push(event.event);
+      }
+    }
     states[rawStateId] = {
       // ПОМЕНЯТЬ ЦВЕТ
       color: rawState.color ?? '#FFFFFF',
@@ -229,13 +234,22 @@ function actionsToEventData(
   rawActions: Array<CGMLAction | CGMLTransitionAction>
 ): EventWithCondition[] {
   const eventDataArr: EventWithCondition[] = [];
-  for (const action of rawActions) {
-    const eventData: EventWithCondition = {
+  const createEvent = (eventData: EventWithCondition): EventData => {
+    if (eventData.event) {
+      return eventData.event;
+    }
+    return {
       trigger: {
         component: '',
         method: '',
       },
       do: [],
+    };
+  };
+  for (const action of rawActions) {
+    const eventData: EventWithCondition = {
+      event: undefined,
+      condition: undefined,
     };
     const doActions: Action[] = [];
     if (action.action) {
@@ -243,17 +257,21 @@ function actionsToEventData(
       if (parsedActions) {
         doActions.push(...parsedActions);
       }
+      const event = createEvent(eventData);
+      event.do = doActions;
+      eventData.event = event;
     }
-    if (action.trigger) {
-      const trigger = parseEvent(action.trigger);
+    if (action.trigger?.event) {
+      const trigger = parseEvent(action.trigger.event);
       if (trigger) {
-        eventData.trigger = trigger;
+        const event = createEvent(eventData);
+        event.trigger = trigger;
+        eventData.event = event;
       }
     }
-    if (action.condition) {
-      eventData.condition = parseCondition(action.condition);
+    if (action.trigger?.condition) {
+      eventData.condition = parseCondition(action.trigger.condition);
     }
-    eventData.do = doActions;
     eventDataArr.push(eventData);
   }
   return eventDataArr;
@@ -281,8 +299,8 @@ function getTransitions(
       color: rawTransition.color ?? randomColor(),
       label: {
         position: rawTransition.labelPosition ?? { x: -1, y: -1 },
-        trigger: eventData.trigger,
-        do: eventData.do,
+        trigger: eventData.event?.trigger,
+        do: eventData.event?.do,
         condition: eventData.condition,
       },
     };
@@ -308,6 +326,13 @@ function labelParameters(args: ArgList, method: MethodProto): ArgList {
     delete labeledArgs[index];
   });
   return labeledArgs;
+}
+
+export function getProtoSignal(
+  signal: string,
+  component: ComponentProto | undefined
+): SignalProto | undefined {
+  return component?.signals[signal];
 }
 
 export function getProtoMethod(
@@ -443,7 +468,7 @@ export function importGraphml(
       platform.components,
       elements.components
     );
-    console.log(rawElements.choices);
+    console.log(rawElements);
 
     elements.choiceStates = getChoices(rawElements.choices);
     elements.transitions = labelTransitionParameters(

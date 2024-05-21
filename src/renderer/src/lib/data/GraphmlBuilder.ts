@@ -78,8 +78,10 @@ export function serializeTransitionEvents(
 ): CGMLTransitionAction[] {
   return [
     {
-      trigger: trigger ? serializeEvent(trigger) : undefined,
-      condition: condition ? serializeCondition(condition) : undefined,
+      trigger: {
+        event: trigger ? serializeEvent(trigger) : undefined,
+        condition: condition ? serializeCondition(condition) : undefined,
+      },
       action: doActions ? serializeActions(doActions) : undefined,
     },
   ];
@@ -89,7 +91,9 @@ export function serializeStateEvents(events: EventData[]): CGMLAction[] {
   const serializedActions: CGMLAction[] = [];
   for (const event of events) {
     serializedActions.push({
-      trigger: serializeEvent(event.trigger),
+      trigger: {
+        event: serializeEvent(event.trigger),
+      },
       action: serializeActions(event.do),
     });
   }
@@ -148,7 +152,7 @@ function serializeCondition(condition: Condition): string {
   }
   const lval = getOperand(condition.value[0].value);
   const rval = getOperand(condition.value[1].value);
-  return `[${lval} ${invertOperatorAlias[condition.type]} ${rval}]`;
+  return `${lval} ${invertOperatorAlias[condition.type]} ${rval}`;
 }
 
 type Vertex = FinalState | ChoiceState | InitialState;
