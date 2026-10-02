@@ -34,7 +34,7 @@ const WARMUP_STEPS = 10;
 const STEPS = 60;
 const FRAME_BUDGET_MS = 16.7;
 // Для этих сценариев снимаем CPU-профиль (у остальных он почти такой же)
-const PROFILED_SCENARIOS = ['frame', 'hover', 'drag-nested'];
+const PROFILED_SCENARIOS = ['frame', 'hover', 'drag-nested', 'frame-fit', 'drag-nested-fit'];
 
 function matchesFilter(filter: string | undefined, value: string) {
   if (!filter) return true;
