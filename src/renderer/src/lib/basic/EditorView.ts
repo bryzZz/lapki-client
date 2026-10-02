@@ -5,6 +5,7 @@ import { CanvasEditor } from '@renderer/lib/CanvasEditor';
 import { EventEmitter } from '@renderer/lib/common';
 import { MAX_SCALE, MIN_SCALE } from '@renderer/lib/constants';
 import { Children, Picto, Shape, Transition } from '@renderer/lib/drawable';
+import { perfFlags } from '@renderer/lib/perf/flags';
 import { Drawable } from '@renderer/lib/types';
 import { GetCapturedNodeParams } from '@renderer/lib/types/drawable';
 import { Point, Rectangle } from '@renderer/lib/types/graphics';
@@ -112,7 +113,7 @@ export class EditorView extends EventEmitter<EditorViewEvents> implements Drawab
       if (!node.children) return;
 
       node.children.forEach((child) => {
-        if (this.isInViewport(child, viewport)) {
+        if (!perfFlags.culling || this.isInViewport(child, viewport)) {
           child.draw(ctx, canvas);
         }
 
@@ -280,7 +281,7 @@ export class EditorView extends EventEmitter<EditorViewEvents> implements Drawab
 
   // Ищет объект под курсором (hit-test по всем фигурам), поэтому не чаще раза в 20 мс.
   // Создаётся один раз: если создавать на каждое событие, throttle ничего не ограничивает
-  private checkTooltip = throttle((e: MyMouseEvent) => {
+  private checkTooltipImpl = (e: MyMouseEvent) => {
     const node = this.getCapturedNode({ position: e });
     if (!node) {
       this.closeTooltip();
@@ -302,17 +303,24 @@ export class EditorView extends EventEmitter<EditorViewEvents> implements Drawab
         }
       }, 400);
     }
-  }, 20);
+  };
+
+  private checkTooltip = throttle(this.checkTooltipImpl, 20);
 
   handleMouseMove = (e: MyMouseEvent) => {
     if (this.showTooltipTimer) {
       this.closeTooltip();
     }
 
-    // С зажатой кнопкой (перетаскивание, панорамирование) подсказка не показывается,
-    // а закрывается выше, поэтому hit-test по всем объектам не нужен
-    if (!e.left && !e.right) {
-      this.checkTooltip(e);
+    if (perfFlags.tooltip) {
+      // С зажатой кнопкой (перетаскивание, панорамирование) подсказка не показывается,
+      // а закрывается выше, поэтому hit-test по всем объектам не нужен
+      if (!e.left && !e.right) {
+        this.checkTooltip(e);
+      }
+    } else {
+      // Как на main: новый throttle на каждое событие и hit-test при любой кнопке
+      throttle(this.checkTooltipImpl, 20)(e);
     }
 
     if (e.left) this.handleLeftMouseMove(e);

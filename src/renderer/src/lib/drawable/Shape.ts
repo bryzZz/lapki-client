@@ -5,6 +5,7 @@ import { Drawable } from '@renderer/lib/types';
 import { GetCapturedNodeParams, Layer } from '@renderer/lib/types/drawable';
 import { Dimensions, Point } from '@renderer/lib/types/graphics';
 import { MyMouseEvent } from '@renderer/lib/types/mouse';
+import { perfFlags } from '@renderer/lib/perf/flags';
 import { isPointInRectangle } from '@renderer/lib/utils';
 
 import { CanvasEditor } from '../CanvasEditor';
@@ -97,6 +98,103 @@ export abstract class Shape extends EventEmitter<ShapeEvents> implements Drawabl
   }
 
   get computedWidth() {
+    return perfFlags.nesting ? this.linearComputedWidth : this.legacyComputedWidth;
+  }
+
+  get childrenContainerHeight() {
+    return perfFlags.nesting
+      ? this.linearChildrenContainerHeight
+      : this.legacyChildrenContainerHeight;
+  }
+
+  // Версия с main, байт в байт (кроме имени)
+  private get legacyComputedWidth() {
+    let width = this.dimensions.width / this.app.controller.scale;
+    if (!this.children.isEmpty) {
+      // TODO(bryzZz) Нужно брать данные из модели
+      const children = [
+        ...this.children.getLayer(Layer.States),
+        ...this.children.getLayer(Layer.InitialStates),
+        ...this.children.getLayer(Layer.FinalStates),
+        ...this.children.getLayer(Layer.ChoiceStates),
+        ...this.children.getLayer(Layer.Transitions),
+        ...this.children.getLayer(Layer.Components),
+        ...this.children.getLayer(Layer.ShallowHistory),
+      ] as Shape[];
+
+      let rightChildren = children[0] as Shape;
+
+      children.forEach((children) => {
+        const x = children.computedPosition.x;
+        const width = children.computedWidth;
+
+        if (x + width > rightChildren.computedPosition.x + rightChildren.computedWidth) {
+          rightChildren = children;
+        }
+      });
+
+      const x = this.computedPosition.x;
+      const cx = rightChildren.computedPosition.x;
+
+      width = Math.max(
+        width,
+        cx +
+          rightChildren.computedDimensions.width -
+          x +
+          CHILDREN_PADDING / this.app.controller.scale
+      );
+    }
+
+    return width;
+  }
+
+  // Версия с main, байт в байт (кроме имени)
+  private get legacyChildrenContainerHeight() {
+    if (this.children.isEmpty) return 0;
+
+    const children = [
+      ...this.children.getLayer(Layer.States),
+      ...this.children.getLayer(Layer.InitialStates),
+      ...this.children.getLayer(Layer.FinalStates),
+      ...this.children.getLayer(Layer.ChoiceStates),
+      ...this.children.getLayer(Layer.Transitions),
+      ...this.children.getLayer(Layer.Components),
+      ...this.children.getLayer(Layer.ShallowHistory),
+    ] as Shape[];
+
+    let bottomChild = children[0] as Shape;
+    let result = 0;
+
+    children.forEach((child) => {
+      const y = child.position.y;
+      const childrenContainerHeight =
+        child.childrenContainerHeight === 0
+          ? child.dimensions.height
+          : child.childrenContainerHeight;
+
+      const bY = bottomChild.position.y;
+      const bChildrenContainerHeight =
+        bottomChild.childrenContainerHeight === 0
+          ? bottomChild.dimensions.height
+          : bottomChild.childrenContainerHeight;
+
+      if (y + childrenContainerHeight > bY + bChildrenContainerHeight) {
+        bottomChild = child;
+      }
+    });
+
+    const bottomChildContainerHeight =
+      bottomChild.childrenContainerHeight === 0
+        ? bottomChild.dimensions.height / this.app.controller.scale
+        : bottomChild.childrenContainerHeight;
+    result =
+      (bottomChild.position.y + CHILDREN_PADDING * 2) / this.app.controller.scale +
+      bottomChildContainerHeight;
+
+    return result;
+  }
+
+  private get linearComputedWidth() {
     let width = this.dimensions.width / this.app.controller.scale;
     if (this.children.isEmpty) return width;
 
@@ -128,7 +226,7 @@ export abstract class Shape extends EventEmitter<ShapeEvents> implements Drawabl
     return this.dimensions.height / this.app.controller.scale;
   }
 
-  get childrenContainerHeight() {
+  private get linearChildrenContainerHeight() {
     if (this.children.isEmpty) return 0;
 
     const children = this.nestedShapes;

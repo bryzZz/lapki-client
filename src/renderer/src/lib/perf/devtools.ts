@@ -11,6 +11,7 @@
 import type { CanvasEditor } from '@renderer/lib/CanvasEditor';
 import { ModelController } from '@renderer/lib/data/ModelController';
 
+import { PerfFlags, perfFlags } from './flags';
 import { frameStats } from './frameStats';
 import { createScenarios, percentile } from './scenarios';
 
@@ -85,30 +86,36 @@ function toMarkdown(editor: CanvasEditor, results: RunResult[]) {
 
 let running = false;
 
-async function run(options: RunOptions = {}) {
+function getEditorForRun() {
   if (running) throw new Error('Прогон уже идёт');
   const editor = getVisibleEditor();
   if (!editor) throw new Error('Не найден открытый холст — откройте схему');
   if (editor.controller.states.data.states.size === 0) {
     throw new Error('На открытом холсте нет состояний — откройте вкладку с машиной состояний');
   }
+  return editor;
+}
 
-  running = true;
-  overlay.setStatus('прогон…');
+function selectScenarios(options: RunOptions) {
+  return createScenarios().filter((s) => !options.scenarios || options.scenarios.includes(s.name));
+}
 
+/** Прогоняет сценарии на холсте и возвращает камеру и настройки как было */
+async function measureScenarios(
+  editor: CanvasEditor,
+  scenarios: ReturnType<typeof createScenarios>,
+  label = ''
+) {
   const controller = editor.controller;
   const camera = { offset: { ...controller.offset }, scale: controller.scale };
   const animations = editor.settings.animations;
   editor.settings = { ...editor.settings, animations: false };
 
   const results: RunResult[] = [];
-  const scenarios = createScenarios().filter(
-    (s) => !options.scenarios || options.scenarios.includes(s.name)
-  );
 
   try {
     for (const scenario of scenarios) {
-      overlay.setStatus(`прогон: ${scenario.name}`);
+      overlay.setStatus(`прогон: ${label}${scenario.name}`);
       const teardown = scenario.setup(editor);
       await nextFrame();
       await nextFrame();
@@ -153,12 +160,12 @@ async function run(options: RunOptions = {}) {
     editor.view.setScale(camera.scale);
     editor.settings = { ...editor.settings, animations };
     editor.view.isDirty = true;
-    running = false;
-    overlay.setStatus('');
   }
 
-  console.table(results);
-  const markdown = toMarkdown(editor, results);
+  return results;
+}
+
+async function publish(markdown: string, command: string) {
   console.log(markdown);
   try {
     await navigator.clipboard.writeText(markdown);
@@ -166,10 +173,137 @@ async function run(options: RunOptions = {}) {
   } catch {
     console.log(
       'Не удалось скопировать в буфер обмена (фокус в DevTools). ' +
-        'Выполните copy(await __perf.run()) или скопируйте текст, начиная со строки «Холст …»'
+        `Выполните copy(await ${command}) или скопируйте текст выше`
     );
   }
   return markdown;
+}
+
+async function run(options: RunOptions = {}) {
+  const editor = getEditorForRun();
+  running = true;
+  try {
+    const results = await measureScenarios(editor, selectScenarios(options));
+    console.table(results);
+    return await publish(toMarkdown(editor, results), '__perf.run()');
+  } finally {
+    running = false;
+    overlay.setStatus('');
+  }
+}
+
+// ВРЕМЕННО (ветка perf/windows-matrix): все комбинации оптимизаций в одной сборке
+const VARIANTS: { name: string; flags: PerfFlags }[] = [
+  { name: 'baseline', flags: { nesting: false, culling: false, tooltip: false } },
+  { name: 'P1', flags: { nesting: true, culling: false, tooltip: false } },
+  { name: 'P2', flags: { nesting: false, culling: true, tooltip: false } },
+  { name: 'P3', flags: { nesting: false, culling: false, tooltip: true } },
+  { name: 'P1+P2', flags: { nesting: true, culling: true, tooltip: false } },
+  { name: 'P1+P2+P3', flags: { nesting: true, culling: true, tooltip: true } },
+];
+
+/** Средний интервал кадров в простое — частота обновления монитора */
+async function measureRefreshRate() {
+  const times: number[] = [];
+  for (let i = 0; i < 31; i++) times.push(await nextFrame());
+  const intervals = times.slice(1).map((t, i) => t - times[i]);
+  return Math.round(
+    1000 /
+      (percentile(
+        [...intervals].sort((a, b) => a - b),
+        50
+      ) ?? 16.7)
+  );
+}
+
+function getGpu() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    const info = gl?.getExtension('WEBGL_debug_renderer_info');
+    if (!gl || !info) return 'неизвестно (нет WebGL)';
+    return String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL));
+  } catch {
+    return 'неизвестно';
+  }
+}
+
+async function describeEnvironment(editor: CanvasEditor) {
+  const ua = navigator.userAgent;
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  return [
+    `- Схема: ${describeDocument(editor)}`,
+    `- Холст: ${editor.canvas.width}×${editor.canvas.height}, окно ${window.innerWidth}×${window.innerHeight}`,
+    `- Экран: ${screen.width}×${screen.height}, devicePixelRatio ${
+      window.devicePixelRatio
+    }, частота ~${await measureRefreshRate()} Гц`,
+    `- Видеокарта (WebGL): ${getGpu()}`,
+    `- Процессор: ${navigator.hardwareConcurrency} потоков; память: ${
+      memory ? `≥${memory} ГБ` : 'неизвестно'
+    }`,
+    `- ${ua.match(/Electron\/[\d.]+/)?.[0] ?? 'Electron ?'}, ${
+      ua.match(/Chrome\/[\d.]+/)?.[0] ?? ''
+    }, ${ua.match(/\(([^)]+)\)/)?.[1] ?? ''}`,
+  ].join('\n');
+}
+
+async function runMatrix(options: RunOptions = {}) {
+  const editor = getEditorForRun();
+  running = true;
+  const saved = { ...perfFlags };
+  const scenarios = selectScenarios(options);
+  const results: Record<string, RunResult[]> = {};
+
+  try {
+    const environment = await describeEnvironment(editor);
+
+    // Прогрев всех вариантов без замера: иначе первый вариант (baseline) попадает
+    // на холодный JIT и выглядит хуже, чем есть
+    const warmup = createScenarios().filter((s) => ['frame', 'drag-nested'].includes(s.name));
+    for (const variant of VARIANTS) {
+      Object.assign(perfFlags, variant.flags);
+      await measureScenarios(editor, warmup, `прогрев ${variant.name}: `);
+    }
+
+    for (const variant of VARIANTS) {
+      Object.assign(perfFlags, variant.flags);
+      results[variant.name] = await measureScenarios(editor, scenarios, `${variant.name}: `);
+    }
+
+    const names = VARIANTS.map((v) => v.name);
+    const pivot = (title: string, pick: (r: RunResult) => number) => [
+      `**${title}**`,
+      '',
+      `| Сценарий | ${names.join(' | ')} |`,
+      `|---|${names.map(() => '---').join('|')}|`,
+      ...scenarios.map(
+        (s, i) => `| ${s.name} | ${names.map((n) => pick(results[n][i])).join(' | ')} |`
+      ),
+      '',
+    ];
+
+    const markdown = [
+      '## Матрица замеров',
+      '',
+      environment,
+      '',
+      'Варианты: P1 — линейная геометрия вложенности, P2 — отсечение невидимого, P3 — hit-test подсказок без лишних вызовов. Все варианты в одной сборке, переключаются флагами.',
+      '',
+      ...pivot('Отрисовка p50, мс', (r) => r.drawP50),
+      ...pivot('Кадр p50, мс', (r) => r.frameP50),
+      ...pivot('Кадр p95, мс', (r) => r.frameP95),
+      ...pivot('FPS', (r) => r.fps),
+      '### Полные таблицы',
+      '',
+      ...VARIANTS.flatMap((v) => [`#### ${v.name}`, '', toMarkdown(editor, results[v.name]), '']),
+    ].join('\n');
+
+    return await publish(markdown, '__perf.runMatrix()');
+  } finally {
+    Object.assign(perfFlags, saved);
+    editor.view.isDirty = true;
+    running = false;
+    overlay.setStatus('');
+  }
 }
 
 /** Плашка с FPS: частота кадров браузера и время отрисовки холста за последнюю секунду */
@@ -241,6 +375,7 @@ declare global {
   interface Window {
     __perf?: {
       run: typeof run;
+      runMatrix: typeof runMatrix;
       overlay: () => void;
       scenarios: string[];
     };
@@ -252,6 +387,7 @@ export function installPerfDevtools() {
 
   window.__perf = {
     run,
+    runMatrix,
     overlay: overlay.toggle,
     scenarios: createScenarios().map((s) => s.name),
   };
