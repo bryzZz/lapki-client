@@ -193,13 +193,16 @@ async function run(options: RunOptions = {}) {
 }
 
 // ВРЕМЕННО (ветка perf/windows-matrix): все комбинации оптимизаций в одной сборке
+const off = { nesting: false, culling: false, tooltip: false, bounds: false };
 const VARIANTS: { name: string; flags: PerfFlags }[] = [
-  { name: 'baseline', flags: { nesting: false, culling: false, tooltip: false } },
-  { name: 'P1', flags: { nesting: true, culling: false, tooltip: false } },
-  { name: 'P2', flags: { nesting: false, culling: true, tooltip: false } },
-  { name: 'P3', flags: { nesting: false, culling: false, tooltip: true } },
-  { name: 'P1+P2', flags: { nesting: true, culling: true, tooltip: false } },
-  { name: 'P1+P2+P3', flags: { nesting: true, culling: true, tooltip: true } },
+  { name: 'baseline', flags: { ...off } },
+  { name: 'P1', flags: { ...off, nesting: true } },
+  { name: 'P2', flags: { ...off, culling: true } },
+  { name: 'P3', flags: { ...off, tooltip: true } },
+  { name: 'P4', flags: { ...off, bounds: true } },
+  { name: 'P1+P2', flags: { ...off, nesting: true, culling: true } },
+  { name: 'P1+P2+P3', flags: { ...off, nesting: true, culling: true, tooltip: true } },
+  { name: 'P1+P2+P3+P4', flags: { nesting: true, culling: true, tooltip: true, bounds: true } },
 ];
 
 /** Средний интервал кадров в простое — частота обновления монитора */
@@ -286,7 +289,7 @@ async function runMatrix(options: RunOptions = {}) {
       '',
       environment,
       '',
-      'Варианты: P1 — линейная геометрия вложенности, P2 — отсечение невидимого, P3 — hit-test подсказок без лишних вызовов. Все варианты в одной сборке, переключаются флагами.',
+      'Варианты: P1 - линейная геометрия вложенности, P2 - отсечение невидимого, P3 - hit-test подсказок без лишних вызовов, P4 - drawBounds без двойного spread. Все варианты в одной сборке, переключаются флагами.',
       '',
       ...pivot('Отрисовка p50, мс', (r) => r.drawP50),
       ...pivot('Кадр p50, мс', (r) => r.frameP50),
@@ -376,6 +379,7 @@ declare global {
     __perf?: {
       run: typeof run;
       runMatrix: typeof runMatrix;
+      flags: PerfFlags;
       overlay: () => void;
       scenarios: string[];
     };
@@ -388,6 +392,7 @@ export function installPerfDevtools() {
   window.__perf = {
     run,
     runMatrix,
+    flags: perfFlags,
     overlay: overlay.toggle,
     scenarios: createScenarios().map((s) => s.name),
   };

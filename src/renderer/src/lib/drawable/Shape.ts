@@ -268,10 +268,18 @@ export abstract class Shape extends EventEmitter<ShapeEvents> implements Drawabl
   }
 
   get drawBounds() {
-    return {
-      ...this.computedPosition,
-      ...this.computedDimensions,
-    };
+    if (!perfFlags.bounds) {
+      // Как на main: двойной spread
+      return {
+        ...this.computedPosition,
+        ...this.computedDimensions,
+      };
+    }
+
+    const { x, y } = this.computedPosition;
+    const { width, height, childrenHeight } = this.computedDimensions;
+
+    return { x, y, width, height, childrenHeight };
   }
 
   private dragEnd() {
