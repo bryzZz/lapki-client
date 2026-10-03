@@ -155,7 +155,7 @@ function buildTransitions(preset: Preset, all: Node[], random: () => number) {
   const target = Math.round(all.length * preset.transitionsPerState);
   const transitions: [Node, Node][] = [];
 
-  // Сначала цепочки между соседями одного родителя — так выглядят реальные схемы
+  // Сначала цепочки между соседями одного родителя - так выглядят реальные схемы
   const byParent = new Map<string, Node[]>();
   for (const node of all) {
     const parent = node.id.includes('::') ? node.id.slice(0, node.id.lastIndexOf('::')) : '';
@@ -167,7 +167,7 @@ function buildTransitions(preset: Preset, all: Node[], random: () => number) {
     }
   }
 
-  // Остальное — случайные переходы, в том числе между уровнями вложенности
+  // Остальное - случайные переходы, в том числе между уровнями вложенности
   while (transitions.length < target) {
     const source = all[Math.floor(random() * all.length)];
     const targetNode = all[Math.floor(random() * all.length)];

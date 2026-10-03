@@ -126,7 +126,7 @@ export class EditorView extends EventEmitter<EditorViewEvents> implements Drawab
   }
 
   // Область, в которой фигуры рисуются: холст с запасом на то, что фигуры рисуют
-  // за своими границами (выделение, «хваталки», концы стрелок — до ~25 / scale)
+  // за своими границами (выделение, хваталки, концы стрелок: до ~25 / scale)
   private getViewport(canvas: HTMLCanvasElement): Rectangle {
     const margin = VIEWPORT_MARGIN / this.app.controller.scale;
     return {

@@ -68,13 +68,13 @@ function callBounds(call: string, font: number, align: string): Rectangle | null
     }
     case 'fillText':
     case 'strokeText': {
-      // Первый аргумент — строка в кавычках, в ней могут быть запятые
+      // Первый аргумент - строка в кавычках, в ней могут быть запятые
       const text = JSON.parse(rawArgs.slice(0, rawArgs.lastIndexOf('",') + 1));
       const [x, y] = rawArgs
         .slice(rawArgs.lastIndexOf('",') + 2)
         .split(',')
         .map(num);
-      // Ширина текста с запасом; по вертикали — с запасом на любую базовую линию
+      // Ширина текста с запасом; по вертикали - с запасом на любую базовую линию
       const width = text.length * font;
       const left =
         align === 'right' || align === 'end' ? x - width : align === 'center' ? x - width / 2 : x;

@@ -8,7 +8,7 @@
 
   Если Note стоит выше Shape, то в момент выполнения `class Note extends Shape` модуль
   Shape ещё не выполнен и Shape === undefined -> TypeError "Class extends value undefined".
-  В собранном приложении (Rollup) это не проявляется, а в vitest (vite-node) — падает.
+  В собранном приложении (Rollup) это не проявляется, а в vitest (vite-node) - падает.
 */
 export * from './Shape';
 export * from './Children';

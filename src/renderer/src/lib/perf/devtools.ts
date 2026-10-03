@@ -1,8 +1,8 @@
 /**
  * Инструменты замера производительности холста прямо в приложении.
  *
- *  - Ctrl+Shift+F — FPS-оверлей в правом верхнем углу;
- *  - window.__perf.run() в консоли DevTools — автоматический прогон сценариев
+ *  - Ctrl+Shift+F - FPS-оверлей в правом верхнем углу;
+ *  - window.__perf.run() в консоли DevTools - автоматический прогон сценариев
  *    из scenarios.ts на открытом сейчас холсте; результат печатается таблицей
  *    и копируется в буфер обмена в виде markdown.
  *
@@ -80,7 +80,7 @@ function toMarkdown(editor: CanvasEditor, results: RunResult[]) {
         `${r.drawP50} | ${r.drawP95} | ${r.drawMax} | ${r.draws} |`
     ),
     '',
-    'кадр — интервал между requestAnimationFrame (всё вместе, мс); отрисовка — время view.draw (мс)',
+    'кадр - интервал между requestAnimationFrame (всё вместе, мс); отрисовка - время view.draw (мс)',
   ].join('\n');
 }
 
@@ -89,9 +89,9 @@ let running = false;
 function getEditorForRun() {
   if (running) throw new Error('Прогон уже идёт');
   const editor = getVisibleEditor();
-  if (!editor) throw new Error('Не найден открытый холст — откройте схему');
+  if (!editor) throw new Error('Не найден открытый холст - откройте схему');
   if (editor.controller.states.data.states.size === 0) {
-    throw new Error('На открытом холсте нет состояний — откройте вкладку с машиной состояний');
+    throw new Error('На открытом холсте нет состояний - откройте вкладку с машиной состояний');
   }
   return editor;
 }
@@ -205,7 +205,7 @@ const VARIANTS: { name: string; flags: PerfFlags }[] = [
   { name: 'P1+P2+P3+P4', flags: { nesting: true, culling: true, tooltip: true, bounds: true } },
 ];
 
-/** Средний интервал кадров в простое — частота обновления монитора */
+/** Средний интервал кадров в простое - частота обновления монитора */
 async function measureRefreshRate() {
   const times: number[] = [];
   for (let i = 0; i < 31; i++) times.push(await nextFrame());
