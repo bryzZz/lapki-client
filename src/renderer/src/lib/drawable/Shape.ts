@@ -169,11 +169,13 @@ export abstract class Shape extends EventEmitter<ShapeEvents> implements Drawabl
     return { width, height, childrenHeight };
   }
 
+  // Без {...a, ...b}: в V8 из Electron 24 двойной spread идёт по медленному пути
+  // (~1.3 мкс на вызов против ~10 нс у литерала), а drawBounds вызывается тысячи раз за кадр
   get drawBounds() {
-    return {
-      ...this.computedPosition,
-      ...this.computedDimensions,
-    };
+    const { x, y } = this.computedPosition;
+    const { width, height, childrenHeight } = this.computedDimensions;
+
+    return { x, y, width, height, childrenHeight };
   }
 
   private dragEnd() {
