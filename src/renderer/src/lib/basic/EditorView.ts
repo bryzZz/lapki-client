@@ -4,13 +4,30 @@ import throttle from 'lodash.throttle';
 import { CanvasEditor } from '@renderer/lib/CanvasEditor';
 import { EventEmitter } from '@renderer/lib/common';
 import { MAX_SCALE, MIN_SCALE } from '@renderer/lib/constants';
-import { Children, Picto, Shape } from '@renderer/lib/drawable';
+import { Children, Picto, Shape, Transition } from '@renderer/lib/drawable';
 import { Drawable } from '@renderer/lib/types';
 import { GetCapturedNodeParams } from '@renderer/lib/types/drawable';
-import { Point } from '@renderer/lib/types/graphics';
+import { Point, Rectangle } from '@renderer/lib/types/graphics';
 import { MyMouseEvent } from '@renderer/lib/types/mouse';
-import { clamp } from '@renderer/lib/utils';
+import { clamp, isRectanglesIntersect } from '@renderer/lib/utils';
 import { getColor } from '@renderer/theme';
+
+// Запас вокруг холста при отсечении невидимого, в экранных пикселях при масштабе 1
+const VIEWPORT_MARGIN = 50;
+
+// Прямоугольник фигуры на экране вместе с вложенными фигурами
+const getShapeRectangle = (shape: Shape): Rectangle => {
+  const { x, y, width, height, childrenHeight } = shape.drawBounds;
+  return { x, y, width, height: Math.max(height, childrenHeight) };
+};
+
+const unionRectangles = (rectangles: Rectangle[]): Rectangle => {
+  const x = Math.min(...rectangles.map((r) => r.x));
+  const y = Math.min(...rectangles.map((r) => r.y));
+  const right = Math.max(...rectangles.map((r) => r.x + r.width));
+  const bottom = Math.max(...rectangles.map((r) => r.y + r.height));
+  return { x, y, width: right - x, height: bottom - y };
+};
 
 /**
  * Контейнер с машиной состояний, в котором происходит отрисовка,
@@ -86,17 +103,50 @@ export class EditorView extends EventEmitter<EditorViewEvents> implements Drawab
       this.drawGrid(ctx, canvas);
     }
 
+    const viewport = this.getViewport(canvas);
+
     const drawChildren = (node: Drawable) => {
       if (!node.children) return;
 
       node.children.forEach((child) => {
-        child.draw(ctx, canvas);
+        if (this.isInViewport(child, viewport)) {
+          child.draw(ctx, canvas);
+        }
 
+        // Детей обходим всегда: вложенная фигура может выходить за рамку родителя
         drawChildren(child);
       });
     };
 
     drawChildren(this);
+  }
+
+  // Область, в которой фигуры рисуются: холст с запасом на то, что фигуры рисуют
+  // за своими границами (выделение, хваталки, концы стрелок: до ~25 / scale)
+  private getViewport(canvas: HTMLCanvasElement): Rectangle {
+    const margin = VIEWPORT_MARGIN / this.app.controller.scale;
+    return {
+      x: -margin,
+      y: -margin,
+      width: canvas.width + margin * 2,
+      height: canvas.height + margin * 2,
+    };
+  }
+
+  private isInViewport(node: Drawable, viewport: Rectangle) {
+    // Переход рисуется между краями источника, метки и цели,
+    // поэтому его рисунок лежит внутри их общего прямоугольника
+    if (node instanceof Transition) {
+      const parts = node.data.label ? [node.source, node.target, node] : [node.source, node.target];
+      return isRectanglesIntersect(viewport, unionRectangles(parts.map(getShapeRectangle)));
+    }
+
+    if (node instanceof Shape) {
+      return isRectanglesIntersect(viewport, getShapeRectangle(node));
+    }
+
+    // Остальное (например, призрачный переход при создании связи) рисуем всегда
+    return true;
   }
 
   private drawGrid(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {

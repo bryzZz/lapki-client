@@ -19,6 +19,12 @@ export const isPointInRectangle = (rectangle: Rectangle, point: Point) => {
   );
 };
 
+export const isRectanglesIntersect = (a: Rectangle, b: Rectangle) => {
+  return (
+    a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height
+  );
+};
+
 export const degrees_to_radians = (degrees: number) => {
   return degrees * (Math.PI / 180);
 };
