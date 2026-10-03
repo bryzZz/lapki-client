@@ -92,6 +92,9 @@ export class EditorView extends EventEmitter<EditorViewEvents> implements Drawab
     this.app.mouse.off('dblclick', this.handleMouseDoubleClick);
     this.app.mouse.off('wheel', this.handleMouseWheel);
     this.app.mouse.off('rightclick', this.handleRightMouseClick);
+
+    // Отложенный вызов throttle не должен сработать после размонтирования
+    this.checkTooltip.cancel();
   }
 
   get isPan() {
@@ -265,46 +268,52 @@ export class EditorView extends EventEmitter<EditorViewEvents> implements Drawab
     });
   };
 
-  handleMouseMove = (e: MyMouseEvent) => {
-    const clear = () => {
-      clearTimeout(this.showTooltipTimer);
-      setTimeout(() => {
-        // this.mouseOnNode?.handleCloseTooltip();
-        // this.isDirty = true;
-        this.emit('closeToolTip', undefined);
-        this.mouseOnNode = null;
-      }, 70);
-    };
+  private closeTooltip() {
+    clearTimeout(this.showTooltipTimer);
+    setTimeout(() => {
+      // this.mouseOnNode?.handleCloseTooltip();
+      // this.isDirty = true;
+      this.emit('closeToolTip', undefined);
+      this.mouseOnNode = null;
+    }, 70);
+  }
 
+  // Ищет объект под курсором (hit-test по всем фигурам), поэтому не чаще раза в 20 мс.
+  // Создаётся один раз: если создавать на каждое событие, throttle ничего не ограничивает
+  private checkTooltip = throttle((e: MyMouseEvent) => {
+    const node = this.getCapturedNode({ position: e });
+    if (!node) {
+      this.closeTooltip();
+      return;
+    }
+    if (!e.left && !e.right && node !== this.mouseOnNode) {
+      clearTimeout(this.showTooltipTimer);
+      this.mouseOnNode = node;
+      this.showTooltipTimer = setTimeout(() => {
+        const offset = this.app.mouse.getOffset();
+        if (node?.tooltipText) {
+          this.emit('showToolTip', {
+            position: {
+              x: this.app.mouse.px + offset.x,
+              y: this.app.mouse.py + offset.y,
+            },
+            text: node.tooltipText,
+          });
+        }
+      }, 400);
+    }
+  }, 20);
+
+  handleMouseMove = (e: MyMouseEvent) => {
     if (this.showTooltipTimer) {
-      clear();
+      this.closeTooltip();
     }
 
-    const checkTooltip = throttle((e: MyMouseEvent) => {
-      const node = this.getCapturedNode({ position: e });
-      if (!node) {
-        clear();
-        return;
-      }
-      if (!e.left && !e.right && node !== this.mouseOnNode) {
-        clearTimeout(this.showTooltipTimer);
-        this.mouseOnNode = node;
-        this.showTooltipTimer = setTimeout(() => {
-          const offset = this.app.mouse.getOffset();
-          if (node?.tooltipText) {
-            this.emit('showToolTip', {
-              position: {
-                x: this.app.mouse.px + offset.x,
-                y: this.app.mouse.py + offset.y,
-              },
-              text: node.tooltipText,
-            });
-          }
-        }, 400);
-      }
-    }, 20);
-
-    checkTooltip(e);
+    // С зажатой кнопкой (перетаскивание, панорамирование) подсказка не показывается,
+    // а закрывается выше, поэтому hit-test по всем объектам не нужен
+    if (!e.left && !e.right) {
+      this.checkTooltip(e);
+    }
 
     if (e.left) this.handleLeftMouseMove(e);
     if (e.right) this.handleRightMouseMove(e);
