@@ -2,6 +2,7 @@ import { Rectangle, Point, TransitionLine, VSector, HSector } from '@renderer/li
 import { Variable } from '@renderer/types/diagram';
 
 import { Transition } from '../drawable';
+import { iconCache } from '../drawable/IconCache';
 
 export * from './generateId';
 export * from './roundPoint';
@@ -272,7 +273,8 @@ export const drawImageFit = (
   const centerShiftX = x + (width - img.naturalWidth * ratio) / 2;
   const centerShiftY = y + (height - img.naturalHeight * ratio) / 2;
 
-  ctx.drawImage(
+  iconCache.draw(
+    ctx,
     img,
     centerShiftX,
     centerShiftY,
