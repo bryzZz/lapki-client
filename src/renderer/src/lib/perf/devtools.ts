@@ -22,6 +22,8 @@ const STEPS = 60;
 type RunOptions = {
   /** Какие сценарии гонять, по умолчанию все */
   scenarios?: string[];
+  /** Какие варианты гонять в runMatrix, по умолчанию все */
+  variants?: string[];
 };
 
 type RunResult = {
@@ -193,7 +195,14 @@ async function run(options: RunOptions = {}) {
 }
 
 // ВРЕМЕННО (ветка perf/windows-matrix): все комбинации оптимизаций в одной сборке
-const off = { nesting: false, culling: false, tooltip: false, bounds: false };
+const off: PerfFlags = {
+  nesting: false,
+  culling: false,
+  tooltip: false,
+  bounds: false,
+  icons: 'svg',
+};
+const all: PerfFlags = { nesting: true, culling: true, tooltip: true, bounds: true, icons: 'svg' };
 const VARIANTS: { name: string; flags: PerfFlags }[] = [
   { name: 'baseline', flags: { ...off } },
   { name: 'P1', flags: { ...off, nesting: true } },
@@ -202,7 +211,9 @@ const VARIANTS: { name: string; flags: PerfFlags }[] = [
   { name: 'P4', flags: { ...off, bounds: true } },
   { name: 'P1+P2', flags: { ...off, nesting: true, culling: true } },
   { name: 'P1+P2+P3', flags: { ...off, nesting: true, culling: true, tooltip: true } },
-  { name: 'P1+P2+P3+P4', flags: { nesting: true, culling: true, tooltip: true, bounds: true } },
+  { name: 'P1+P2+P3+P4', flags: { ...all } },
+  { name: 'P1+P2+P3+P4+P11', flags: { ...all, icons: 'cache' } },
+  { name: 'P1+P2+P3+P4 без иконок', flags: { ...all, icons: 'off' } },
 ];
 
 /** Средний интервал кадров в простое - частота обновления монитора */
@@ -254,6 +265,7 @@ async function runMatrix(options: RunOptions = {}) {
   running = true;
   const saved = { ...perfFlags };
   const scenarios = selectScenarios(options);
+  const variants = VARIANTS.filter((v) => !options.variants || options.variants.includes(v.name));
   const results: Record<string, RunResult[]> = {};
 
   try {
@@ -262,17 +274,17 @@ async function runMatrix(options: RunOptions = {}) {
     // Прогрев всех вариантов без замера: иначе первый вариант (baseline) попадает
     // на холодный JIT и выглядит хуже, чем есть
     const warmup = createScenarios().filter((s) => ['frame', 'drag-nested'].includes(s.name));
-    for (const variant of VARIANTS) {
+    for (const variant of variants) {
       Object.assign(perfFlags, variant.flags);
       await measureScenarios(editor, warmup, `прогрев ${variant.name}: `);
     }
 
-    for (const variant of VARIANTS) {
+    for (const variant of variants) {
       Object.assign(perfFlags, variant.flags);
       results[variant.name] = await measureScenarios(editor, scenarios, `${variant.name}: `);
     }
 
-    const names = VARIANTS.map((v) => v.name);
+    const names = variants.map((v) => v.name);
     const pivot = (title: string, pick: (r: RunResult) => number) => [
       `**${title}**`,
       '',
@@ -289,7 +301,7 @@ async function runMatrix(options: RunOptions = {}) {
       '',
       environment,
       '',
-      'Варианты: P1 - линейная геометрия вложенности, P2 - отсечение невидимого, P3 - hit-test подсказок без лишних вызовов, P4 - drawBounds без двойного spread. Все варианты в одной сборке, переключаются флагами.',
+      'Варианты: P1 - линейная геометрия вложенности, P2 - отсечение невидимого, P3 - hit-test подсказок без лишних вызовов, P4 - drawBounds без двойного spread, P11 - кеш растров иконок вместо SVG; "без иконок" - не рисовать иконки. Все варианты в одной сборке, переключаются флагами.',
       '',
       ...pivot('Отрисовка p50, мс', (r) => r.drawP50),
       ...pivot('Кадр p50, мс', (r) => r.frameP50),
@@ -297,7 +309,7 @@ async function runMatrix(options: RunOptions = {}) {
       ...pivot('FPS', (r) => r.fps),
       '### Полные таблицы',
       '',
-      ...VARIANTS.flatMap((v) => [`#### ${v.name}`, '', toMarkdown(editor, results[v.name]), '']),
+      ...variants.flatMap((v) => [`#### ${v.name}`, '', toMarkdown(editor, results[v.name]), '']),
     ].join('\n');
 
     return await publish(markdown, '__perf.runMatrix()');
