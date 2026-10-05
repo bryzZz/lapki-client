@@ -112,11 +112,11 @@ export class EditorView extends EventEmitter<EditorViewEvents> implements Drawab
       if (!node.children) return;
 
       node.children.forEach((child) => {
-        if (this.isInViewport(child, viewport)) {
-          child.draw(ctx, canvas);
-        }
+        // Вложенные фигуры лежат внутри родителя, поэтому невидимого родителя
+        // пропускаем вместе с детьми
+        if (!this.isInViewport(child, viewport)) return;
 
-        // Детей обходим всегда: вложенная фигура может выходить за рамку родителя
+        child.draw(ctx, canvas);
         drawChildren(child);
       });
     };
